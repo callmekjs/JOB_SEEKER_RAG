@@ -1,0 +1,10 @@
+[
+  {
+    "query": "백엔드 개발자 신입",
+    "relevant_source_row_ids": [1]
+  },
+  {
+    "query": "백엔드 개발",
+    "relevant_source_row_ids": [1, 72]
+  }
+]
