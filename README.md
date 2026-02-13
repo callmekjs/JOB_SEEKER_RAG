@@ -1,174 +1,163 @@
-# 🧑‍💻 채용공고 자동 크롤러
+# 📋 채용공고 RAG (Recruit Crawler + RAG)
 
-사람인(Saramin) 채용공고를 자동으로 수집하고, CSV 저장 및 이메일 알림까지 지원하는 파이썬 크롤러입니다.  
-특정 키워드, 연봉, 회사 유형, 고용 형태 등 다양한 조건을 설정하여 원하는 채용공고만 수집할 수 있습니다.  
+점핏(Jumpit) 채용 공고를 크롤링하고, 정제·정규화·청킹·임베딩 후 PostgreSQL(pgvector)에 저장합니다.  
+저장된 공고를 **RAG(검색 + 재순위 + LLM)** 로 질의하면 답변과 참고 공고를 확인할 수 있으며, **Streamlit** 웹 앱으로 사용할 수 있습니다.
 
-<br/>
 <br/>
 
 ## ✨ 주요 기능
-- ✅ **사람인 채용공고 자동 크롤링**
-- ✅ **검색 필터 적용 가능** (연봉, 회사 유형, 고용 형태, 근무일, 재택 여부 등)
-- ✅ **최대 5페이지 크롤링 (중복 제거 포함)**
-- ✅ **결과 CSV 저장** (공고 제목, 회사명, 마감일, 지역, 학력, 경력, 링크 등)
-- ✅ **이메일 알림 기능** (주요 공고 미리보기 + CSV 첨부)
 
+- ✅ **점핏 채용 공고 크롤링** (`jumpit_crawler.py`) — Playwright/Selenium 기반
+- ✅ **데이터 파이프라인**: Cleansing → Normalizing → Chunking → Embedding → PostgreSQL(pgvector)
+- ✅ **RAG**: Retriever(벡터 검색 + 메타 필터) → Rerank(Cross-encoder) → Generate(LLM 답변)
+- ✅ **Streamlit 앱**: 질문 입력 → 답변 + 참고한 채용 공고(주요업무·자격요건) 표시
+- ✅ **Fine_tuning**: JD 규칙·시스템 프롬프트 정의 (파인튜닝/프롬프트 설계용)
 
 <br/>
+
+## 📐 설계 플로우
+
+### 데이터 파이프라인 (수집 → 저장)
+
+```mermaid
+flowchart LR
+  A[점핏 크롤링] --> B[Cleansing]
+  B --> C[Normalizing]
+  C --> D[Chunking]
+  D --> E[Embedding]
+  E --> F[(pgvector)]
+```
+
+### RAG (질의 → 답변)
+
+```mermaid
+flowchart LR
+  Q[질문] --> R[Retriever]
+  R --> RR[Rerank]
+  RR --> G[Generate]
+  G --> A[답변 + 참고 공고]
+  A --> S[Streamlit UI]
+```
+
+<br/>
+
+## 📁 프로젝트 구조
+
+```
+recruit_crawler/
+├── jumpit_crawler.py      # 점핏 크롤러
+├── service/               # 데이터 파이프라인
+│   ├── cleansing/         # CSV 정제
+│   ├── normalizing/       # 정규화 + document 컬럼 생성
+│   ├── chunking/          # 5그룹 청킹 (직무·기술스택·주요업무·자격요건·조건)
+│   └── embedding/         # OpenAI 임베딩 → pgvector + JSONL
+├── RAG/
+│   ├── Retriever/         # 벡터 검색 + 메타 필터
+│   ├── Rerank/            # Cross-encoder 재순위
+│   ├── Generate/          # context → LLM 답변 생성
+│   └── Evaluate/         # 검색/RAG 평가
+├── Fine_tuning/           # JD 규칙, get_finetune_system_prompt() 등
+├── Streamlit/
+│   └── app.py             # RAG 질의·답변 웹 UI
+├── requirements.txt
+├── .env                   # OPENAI_API_KEY, DATABASE_URL (미커밋)
+└── README.md
+```
+
 <br/>
 
 ## 🛠️ 설치 방법
 
 ### 1. 저장소 클론
+
 ```bash
 git clone https://github.com/yujeong0411/recruit_crawler.git
 cd recruit_crawler
 ```
-<br/>
 
-### 2. 가상환경 (선택)
+### 2. 가상환경 (권장)
+
 ```bash
-python -m venv venv
-source venv/bin/activate   # Mac/Linux
-venv\Scripts\activate      # Windows
+python -m venv .venv
+.venv\Scripts\activate      # Windows
+# source .venv/bin/activate   # Mac/Linux
 ```
-<br/>
 
 ### 3. 패키지 설치
+
 ```bash
 pip install -r requirements.txt
 ```
-#### 📦 requirements.txt 
-```bash
-requests
-beautifulsoup4
-pandas
-```
 
+주요 의존성: `openai`, `psycopg2-binary`, `pgvector`, `python-dotenv`, `sentence-transformers`, `streamlit`, `playwright`, `pandas` 등.
 
-<br/>
+### 4. 환경 변수 (.env)
+
+프로젝트 루트에 `.env` 파일을 만들고 다음을 설정합니다.
+
+| 변수 | 설명 |
+|------|------|
+| `OPENAI_API_KEY` | OpenAI API 키 (임베딩·채팅) |
+| `DATABASE_URL` | PostgreSQL 연결 문자열 (예: `postgresql://user:pass@localhost:5432/postgres`) |
+
+pgvector 확장이 설치된 PostgreSQL이 필요합니다.
+
+### 5. 점핏 크롤링 → DB 적재 (선택)
+
+1. 점핏 크롤러로 CSV 수집: `jumpit_crawler.py` 실행
+2. Cleansing → Normalizing → Chunking → Embedding 순으로 파이프라인 실행 후, `service/embedding`에서 PostgreSQL에 저장
+
 <br/>
 
 ## 🚀 사용법
 
-### 1. 기본 실행
+### Streamlit으로 RAG 사용 (질의·답변)
+
 ```bash
-python saramin_crawler.py
+streamlit run Streamlit/app.py
 ```
-기본적으로 run_advanced_crawler() 가 실행되며, 여러 조건으로 자동 크롤링 진행 후 CSV 저장/이메일 발송을 합니다.
+
+브라우저에서 질문을 입력하고 **검색** 버튼을 누르면, 저장된 채용 공고를 검색해 답변과 참고 공고(주요업무·자격요건)를 표시합니다.  
+사이드바에서 회사명·직무·경력·회사 규모 필터와 검색 옵션(후보 건수, Rerank 사용, 공고 수)을 조정할 수 있습니다.
+
+### RAG CLI (답변만 생성)
+
+```bash
+python -m RAG.Generate "데이터 파이프라인 경험 있는 회사 알려줘"
+```
+
+옵션: `--company`, `--job-role`, `--career-type`, `--company-years`, `--retrieve-limit`, `--no-rerank`, `--rerank-top-k` 등.
+
+### 검색만 (Retriever)
+
+```bash
+python -m RAG.Retriever "백엔드 개발자" --limit 10
+```
+
+### Rerank만 테스트
+
+```bash
+python -m RAG.Rerank "질문"  # 내부에서 Retriever 호출 후 Rerank
+```
+
 <br/>
 
-### 2. 원하는 조건으로 직접 검색
-```bash
-from saramin_crawler import SaraminCrawler
+## 📊 RAG 흐름 요약
 
-crawler = SaraminCrawler()
+1. **Retriever**: 질의 임베딩 + 메타 필터 → pgvector 유사도 검색 → 공고당 1건 dedup
+2. **Rerank**: Cross-encoder로 (질문, 문서) 관련도 재정렬 → 상위 k건
+3. **Generate**: 공고 중복·회사명 없음·동일 본문 제거 후 context 구성 → LLM(기본 gpt-4o-mini)으로 답변 생성 → 답변 + sources 반환
 
-jobs = crawler.search_jobs(
-    keyword="데이터 분석",
-    salary_min="3000만원~",
-    company_types=["대기업", "중견기업"],
-    job_types=["정규직"],
-    work_days=["주5일"],
-    exclude_keywords=["학교"]
-)
-```
-<br/>
-
-### 3. 이메일 설정
-이 프로젝트는 이메일 알림 기능을 위해 3가지 환경변수를 사용합니다:
-- `EMAIL_SENDER` : 발신자 이메일 주소 (예: `내메일@gmail.com`)
-- `EMAIL_RECEIVER` : 수신자 이메일 주소
-- `EMAIL_APP_PASSWORD` : 구글 앱 비밀번호 (일반 계정 비밀번호가 아님!)
-
-> 👉 보안상 코드에 직접 적지 말고, 환경변수 또는 GitHub Actions secrets에 저장하세요.
-
-#### 3-1. Windows CMD
-```bash
-set EMAIL_SENDER=내메일@gmail.com
-set EMAIL_RECEIVER=내메일@gmail.com
-set EMAIL_APP_PASSWORD=앱비밀번호
-```
-
-#### 3-2. Windows PowerShell
-```bash
-$env:EMAIL_SENDER="내메일@gmail.com"
-$env:EMAIL_RECEIVER="받는사람@gmail.com"
-$env:EMAIL_APP_PASSWORD="앱비밀번호"
-```
-
-#### 3-3. Mac/Linux
-```bash
-export EMAIL_SENDER="내메일@gmail.com"
-export EMAIL_RECEIVER="받는사람@gmail.com"
-export EMAIL_APP_PASSWORD="앱비밀번호"
-```
-
-#### 3-4. GitHub Actions Secrets (현재 방식)
-GitHub 저장소 → Settings → Secrets and variables → Actions → New repository secret
-
-아래 세 가지를 등록:
-- EMAIL_SENDER
-- EMAIL_RECEIVER
-- EMAIL_APP_PASSWORD
-
-워크플로우에서 자동으로 사용됩니다:
-```bash
-name: Recruit Crawler
-
-on:
-  schedule:
-    - cron: "0 0 * * *" # 매일 0시(UTC) 실행 → 한국 시간은 오전 9시
-  workflow_dispatch: # 필요 시 수동 실행 버튼도 활성화
-
-jobs:
-  run-crawler:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
-
-      - name: Install dependencies
-        run: |
-          pip install requests beautifulsoup4 pandas
-
-      - name: Run crawler
-        env:
-          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
-          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
-          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
-        run: python saramin_crawler.py
-
-```
-
-
-<br/>
-<br/>
-
-## 📊 결과 예시
-![csv](docs/csv_example.png)
-![email01](docs/email_example.png)
-![email01](docs/email_example2.png)
-
-<br/>
 <br/>
 
 ## ⚠️ 주의사항
 
-사람인 사이트 구조나 API가 바뀌면 코드가 작동하지 않을 수 있습니다.
+- 점핏 사이트 구조가 바뀌면 크롤러가 동작하지 않을 수 있습니다.
+- 과도한 요청 시 차단될 수 있으므로, 크롤링 시 간격을 두세요.
+- `.env`는 API 키·DB 비밀번호가 포함되므로 Git에 커밋하지 마세요 (`.gitignore`에 포함 권장).
 
-단기간에 과도한 요청은 차단될 수 있으므로, 크롤링 시 time.sleep(1) 을 유지하세요.
-
-이메일 기능은 Gmail 기준이며, 타 이메일 서비스는 설정이 다를 수 있습니다.
-
-<br/>
 <br/>
 
 ## 📌 라이선스
+
 이 프로젝트는 [MIT License](./LICENSE)를 따릅니다.
